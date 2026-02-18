@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import html
 import io
 import math
 import re
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
 SLOTS_PER_U_DEFAULT = 4
+DEFAULT_ID_LENGTH = 32
 
 LC_BREAKOUT_MODULE = "lc_breakout_2xmpo12_to_12xlcduplex"
 UTP_MODULE = "utp_6xrj45"
@@ -98,7 +100,7 @@ def natural_sort_key(value: str) -> Tuple[str, int, int, str]:
     return (value, 1, 0, value)
 
 
-def deterministic_id(canonical: str, length: int = 16) -> str:
+def deterministic_id(canonical: str, length: int = DEFAULT_ID_LENGTH) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:length]
 
 
@@ -537,6 +539,9 @@ def render_svgs(result: AllocationResult) -> Dict[str, str]:
 
 
 def _render_svg_root(title: str, attributes: Dict[str, str], text_lines: List[str]) -> str:
-    attrs = " ".join([f'{key}="{value}"' for key, value in attributes.items()])
-    text_markup = "".join([f"<text>{line}</text>" for line in text_lines])
-    return f"<svg xmlns=\"http://www.w3.org/2000/svg\" {attrs}><title>{title}</title>{text_markup}</svg>"
+    attrs = " ".join(
+        [f'{html.escape(key)}="{html.escape(value)}"' for key, value in attributes.items()]
+    )
+    text_markup = "".join([f"<text>{html.escape(line)}</text>" for line in text_lines])
+    safe_title = html.escape(title)
+    return f"<svg xmlns=\"http://www.w3.org/2000/svg\" {attrs}><title>{safe_title}</title>{text_markup}</svg>"
