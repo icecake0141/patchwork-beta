@@ -4,6 +4,6 @@
 # Development dependencies
 pytest>=8.0.0
 pytest-cov>=4.1.0
-ruff==0.1.15  # Match version in .pre-commit-config.yaml
+ruff==0.15.1  # Match version in .pre-commit-config.yaml
 mypy>=1.8.0
 pre-commit>=3.6.0
