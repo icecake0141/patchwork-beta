@@ -518,7 +518,10 @@ def render_svgs(result: AllocationResult) -> Dict[str, str]:
             [f"Rack {rack_id}"]
         )
     pair_svgs = {}
-    pairs = sorted({(session.src_rack, session.dst_rack) for session in result.sessions}, key=lambda pair: (natural_sort_key(pair[0]), natural_sort_key(pair[1])))
+    pairs = sorted(
+        {(session.src_rack, session.dst_rack) for session in result.sessions},
+        key=lambda pair: (natural_sort_key(pair[0]), natural_sort_key(pair[1])),
+    )
     for rack_a, rack_b in pairs:
         key = f"{rack_a}_{rack_b}"
         pair_svgs[key] = _render_svg_root(
