@@ -94,3 +94,5 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+          # Note: For public repositories, codecov works without a token.
+          # For private repositories, add CODECOV_TOKEN to repository secrets.
