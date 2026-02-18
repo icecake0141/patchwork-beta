@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.
+# This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.  # noqa: E501
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import html
 import io
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Tuple
 
 SLOTS_PER_U_DEFAULT = 4
 DEFAULT_ID_LENGTH = 32
@@ -33,9 +33,9 @@ class Module:
     panel_u: int
     slot: int
     module_type: str
-    fiber_kind: Optional[str]
-    polarity_variant: Optional[str]
-    peer_rack_id: Optional[str]
+    fiber_kind: str | None
+    polarity_variant: str | None
+    peer_rack_id: str | None
     dedicated: bool
 
 
@@ -43,8 +43,8 @@ class Module:
 class Cable:
     cable_id: str
     cable_type: str
-    fiber_kind: Optional[str]
-    polarity_type: Optional[str]
+    fiber_kind: str | None
+    polarity_type: str | None
     src_rack: str
     dst_rack: str
 
@@ -67,17 +67,17 @@ class Session:
     dst_u: int
     dst_slot: int
     dst_port: int
-    fiber_a: Optional[int]
-    fiber_b: Optional[int]
-    notes: Optional[str] = None
+    fiber_a: int | None
+    fiber_b: int | None
+    notes: str | None = None
 
 
 @dataclass(frozen=True)
 class AllocationResult:
-    panels: List[Panel]
-    modules: List[Module]
-    cables: List[Cable]
-    sessions: List[Session]
+    panels: list[Panel]
+    modules: list[Module]
+    cables: list[Cable]
+    sessions: list[Session]
 
 
 @dataclass
@@ -85,14 +85,14 @@ class _SlotCursor:
     slots_per_u: int = SLOTS_PER_U_DEFAULT
     index: int = 0
 
-    def next_slot(self) -> Tuple[int, int]:
+    def next_slot(self) -> tuple[int, int]:
         u = self.index // self.slots_per_u + 1
         slot = self.index % self.slots_per_u + 1
         self.index += 1
         return u, slot
 
 
-def natural_sort_key(value: str) -> Tuple[str, int, int, str]:
+def natural_sort_key(value: str) -> tuple[str, int, int, str]:
     match = re.match(r"^(.*?)(\d+)$", value)
     if match:
         prefix, digits = match.groups()
@@ -104,13 +104,13 @@ def deterministic_id(canonical: str, length: int = DEFAULT_ID_LENGTH) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:length]
 
 
-def allocate_project(project: Dict) -> AllocationResult:
+def allocate_project(project: dict) -> AllocationResult:
     racks = [rack["id"] for rack in project.get("racks", [])]
     rack_set = set(racks)
     if len(rack_set) != len(racks):
         raise ValueError("rack ids must be unique")
     demands = project.get("demands", [])
-    pair_demands: Dict[Tuple[str, str], Dict[str, int]] = {}
+    pair_demands: dict[tuple[str, str], dict[str, int]] = {}
     for demand in demands:
         src = demand["src"]
         dst = demand["dst"]
@@ -125,9 +125,9 @@ def allocate_project(project: Dict) -> AllocationResult:
         pair_demands[pair][media] = pair_demands[pair].get(media, 0) + count
 
     slot_cursors = {rack_id: _SlotCursor() for rack_id in racks}
-    modules: List[Module] = []
-    sessions: List[Session] = []
-    cables: List[Cable] = []
+    modules: list[Module] = []
+    sessions: list[Session] = []
+    cables: list[Cable] = []
 
     def add_session(
         *,
@@ -142,8 +142,8 @@ def allocate_project(project: Dict) -> AllocationResult:
         dst_u: int,
         dst_slot: int,
         dst_port: int,
-        fiber_a: Optional[int] = None,
-        fiber_b: Optional[int] = None,
+        fiber_a: int | None = None,
+        fiber_b: int | None = None,
     ) -> None:
         label_a = f"{src_rack}U{src_u}S{src_slot}P{src_port}"
         label_b = f"{dst_rack}U{dst_u}S{dst_slot}P{dst_port}"
@@ -191,8 +191,8 @@ def allocate_project(project: Dict) -> AllocationResult:
         *,
         canonical: str,
         cable_type: str,
-        fiber_kind: Optional[str],
-        polarity_type: Optional[str],
+        fiber_kind: str | None,
+        polarity_type: str | None,
         src_rack: str,
         dst_rack: str,
     ) -> str:
@@ -209,7 +209,10 @@ def allocate_project(project: Dict) -> AllocationResult:
         )
         return cable_id
 
-    pair_list = sorted(pair_demands.keys(), key=lambda pair: (natural_sort_key(pair[0]), natural_sort_key(pair[1])))
+    pair_list = sorted(
+        pair_demands.keys(),
+        key=lambda pair: (natural_sort_key(pair[0]), natural_sort_key(pair[1])),
+    )
 
     for pair in pair_list:
         count = pair_demands[pair].get("mpo12", 0)
@@ -342,7 +345,7 @@ def allocate_project(project: Dict) -> AllocationResult:
                     )
                 remaining -= ports_this_module
 
-    utp_peer_counts: Dict[str, Dict[str, int]] = {rack_id: {} for rack_id in racks}
+    utp_peer_counts: dict[str, dict[str, int]] = {rack_id: {} for rack_id in racks}
     for pair in pair_list:
         count = pair_demands[pair].get("utp_rj45", 0)
         if count <= 0:
@@ -351,9 +354,9 @@ def allocate_project(project: Dict) -> AllocationResult:
         utp_peer_counts[src_rack][dst_rack] = utp_peer_counts[src_rack].get(dst_rack, 0) + count
         utp_peer_counts[dst_rack][src_rack] = utp_peer_counts[dst_rack].get(src_rack, 0) + count
 
-    utp_port_map: Dict[Tuple[str, str], List[Tuple[int, int, int]]] = {}
+    utp_port_map: dict[tuple[str, str], list[tuple[int, int, int]]] = {}
     for rack_id, peers in utp_peer_counts.items():
-        open_module: Optional[Dict[str, int]] = None
+        open_module: dict[str, int] | None = None
         for peer_rack in sorted(peers.keys(), key=natural_sort_key):
             remaining = peers[peer_rack]
             if open_module and open_module["used"] < 6 and remaining > 0:
@@ -440,10 +443,13 @@ def allocate_project(project: Dict) -> AllocationResult:
                 dst_port=dst_port,
             )
 
-    panels: List[Panel] = []
+    panels: list[Panel] = []
     for rack_id in racks:
         max_u = max((module.panel_u for module in modules if module.rack_id == rack_id), default=0)
-        panels.extend(Panel(rack_id=rack_id, u=u, slots_per_u=SLOTS_PER_U_DEFAULT) for u in range(1, max_u + 1))
+        panels.extend(
+            Panel(rack_id=rack_id, u=u, slots_per_u=SLOTS_PER_U_DEFAULT)
+            for u in range(1, max_u + 1)
+        )
 
     return AllocationResult(panels=panels, modules=modules, cables=cables, sessions=sessions)
 
@@ -452,7 +458,7 @@ def export_session_table_csv(
     *,
     project_id: str,
     sessions: Iterable[Session],
-    revision_id: Optional[str] = None,
+    revision_id: str | None = None,
 ) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
@@ -509,15 +515,13 @@ def export_session_table_csv(
     return output.getvalue()
 
 
-def render_svgs(result: AllocationResult) -> Dict[str, str]:
+def render_svgs(result: AllocationResult) -> dict[str, str | dict[str, str]]:
     topology = _render_svg_root("topology", {"data-kind": "topology"}, ["Topology"])
     rack_svgs = {}
     racks = {panel.rack_id for panel in result.panels}
     for rack_id in sorted(racks, key=natural_sort_key):
         rack_svgs[rack_id] = _render_svg_root(
-            "rack-panels",
-            {"data-kind": "rack-panels", "data-rack": rack_id},
-            [f"Rack {rack_id}"]
+            "rack-panels", {"data-kind": "rack-panels", "data-rack": rack_id}, [f"Rack {rack_id}"]
         )
     pair_svgs = {}
     pairs = sorted(
@@ -529,7 +533,7 @@ def render_svgs(result: AllocationResult) -> Dict[str, str]:
         pair_svgs[key] = _render_svg_root(
             "pair-detail",
             {"data-kind": "pair-detail", "data-pair": key},
-            [f"Pair {rack_a}-{rack_b}"]
+            [f"Pair {rack_a}-{rack_b}"],
         )
     return {
         "topology": topology,
@@ -538,10 +542,13 @@ def render_svgs(result: AllocationResult) -> Dict[str, str]:
     }
 
 
-def _render_svg_root(title: str, attributes: Dict[str, str], text_lines: List[str]) -> str:
+def _render_svg_root(title: str, attributes: dict[str, str], text_lines: list[str]) -> str:
     attrs = " ".join(
         [f'{html.escape(key)}="{html.escape(value)}"' for key, value in attributes.items()]
     )
     text_markup = "".join([f"<text>{html.escape(line)}</text>" for line in text_lines])
     safe_title = html.escape(title)
-    return f"<svg xmlns=\"http://www.w3.org/2000/svg\" {attrs}><title>{safe_title}</title>{text_markup}</svg>"
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" {attrs}>'
+        f"<title>{safe_title}</title>{text_markup}</svg>"
+    )
