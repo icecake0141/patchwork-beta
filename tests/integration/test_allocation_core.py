@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.
+# This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.  # noqa: E501
 
 import unittest
 
@@ -78,13 +78,17 @@ class TestAllocationCore(unittest.TestCase):
         self.assertIn("topology", svgs)
         self.assertIn("rack_panels", svgs)
         self.assertIn("pair_detail", svgs)
-        self.assertIn("data-kind=\"topology\"", svgs["topology"])
-        for rack_svg in svgs["rack_panels"].values():
+        self.assertIn('data-kind="topology"', svgs["topology"])
+        rack_panels = svgs["rack_panels"]
+        assert isinstance(rack_panels, dict)
+        for rack_svg in rack_panels.values():
             self.assertIn("<svg", rack_svg)
-            self.assertIn("data-kind=\"rack-panels\"", rack_svg)
-        for pair_svg in svgs["pair_detail"].values():
+            self.assertIn('data-kind="rack-panels"', rack_svg)
+        pair_detail = svgs["pair_detail"]
+        assert isinstance(pair_detail, dict)
+        for pair_svg in pair_detail.values():
             self.assertIn("<svg", pair_svg)
-            self.assertIn("data-kind=\"pair-detail\"", pair_svg)
+            self.assertIn('data-kind="pair-detail"', pair_svg)
 
 
 if __name__ == "__main__":

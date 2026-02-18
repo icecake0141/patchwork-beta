@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.
+# This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.  # noqa: E501
 
 import unittest
 
@@ -51,7 +51,11 @@ class TestSpecAcceptance(unittest.TestCase):
         self.assertEqual(first_ports, list(range(1, 13)))
         self.assertEqual(second_ports, [1])
 
-        mmf_trunks = [cable for cable in result.cables if cable.cable_type == "mpo12_trunk" and cable.fiber_kind == "mmf"]
+        mmf_trunks = [
+            cable
+            for cable in result.cables
+            if cable.cable_type == "mpo12_trunk" and cable.fiber_kind == "mmf"
+        ]
         self.assertEqual(len(mmf_trunks), 4)
 
     def test_mpo_e2e_slot_capacity(self) -> None:
@@ -62,7 +66,9 @@ class TestSpecAcceptance(unittest.TestCase):
             ],
         }
         result = allocate_project(project)
-        mpo_modules = [module for module in result.modules if module.module_type == MPO_PASS_THROUGH_MODULE]
+        mpo_modules = [
+            module for module in result.modules if module.module_type == MPO_PASS_THROUGH_MODULE
+        ]
         self.assertEqual(len([m for m in mpo_modules if m.rack_id == "R01"]), 2)
         self.assertEqual(len([m for m in mpo_modules if m.rack_id == "R02"]), 2)
 
@@ -143,8 +149,20 @@ class TestSpecAcceptance(unittest.TestCase):
         project = {
             "racks": [{"id": "R01"}, {"id": "R02"}],
             "demands": [
-                {"id": "D005", "src": "R01", "dst": "R02", "endpoint_type": "mpo12", "count": 36},
-                {"id": "D006", "src": "R01", "dst": "R02", "endpoint_type": "mmf_lc_duplex", "count": 1},
+                {
+                    "id": "D005",
+                    "src": "R01",
+                    "dst": "R02",
+                    "endpoint_type": "mpo12",
+                    "count": 36,
+                },
+                {
+                    "id": "D006",
+                    "src": "R01",
+                    "dst": "R02",
+                    "endpoint_type": "mmf_lc_duplex",
+                    "count": 1,
+                },
             ],
         }
         result = allocate_project(project)
