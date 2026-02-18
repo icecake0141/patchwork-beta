@@ -11,6 +11,7 @@ import math
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 SLOTS_PER_U_DEFAULT = 4
 DEFAULT_ID_LENGTH = 32
@@ -104,7 +105,7 @@ def deterministic_id(canonical: str, length: int = DEFAULT_ID_LENGTH) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:length]
 
 
-def allocate_project(project: dict) -> AllocationResult:
+def allocate_project(project: dict[str, Any]) -> AllocationResult:
     racks = [rack["id"] for rack in project.get("racks", [])]
     rack_set = set(racks)
     if len(rack_set) != len(racks):
