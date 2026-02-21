@@ -16,6 +16,10 @@ Data center rack patch panel allocation and cable management system.
 - [Dependencies](#dependencies)
 - [Installation](#installation)
 - [Basic Usage](#basic-usage)
+- [Input Schema](#input-schema)
+- [Output Structure](#output-structure)
+- [API Reference](#api-reference)
+- [Complete Example with Sample Output](#complete-example-with-sample-output)
 - [Configuration](#configuration)
 - [Development](#development)
 - [Project Structure](#project-structure)
@@ -74,7 +78,185 @@ pip install -e .
 ## Basic Usage
 
 ```python
-from patchwork import allocate_project, export_session_table_csv, render_svgs
+from patchwork import allocate_project, export_session_table_csv, export_result_json, render_svgs
+
+# 1. Define the project (racks and connection demands)
+project = {
+    "racks": [{"id": "R01"}, {"id": "R02"}],
+    "demands": [
+        {
+            "id": "D001",
+            "src": "R01",
+            "dst": "R02",
+            "endpoint_type": "mmf_lc_duplex",
+            "count": 2,
+        }
+    ],
+}
+
+# 2. Run allocation
+result = allocate_project(project)
+
+# 3. Export session table as CSV
+csv_output = export_session_table_csv(project_id="proj-1", sessions=result.sessions)
+
+# 4. Export full result as JSON
+json_output = export_result_json(project_id="proj-1", result=result)
+
+# 5. Generate SVG visualizations
+svgs = render_svgs(result)
+```
+
+## Input Schema
+
+`allocate_project` accepts a Python `dict` (which can be loaded from JSON) with the following structure:
+
+```python
+project = {
+    "racks": [
+        {"id": "R01"},  # Each rack must have a unique string id
+        {"id": "R02"},
+    ],
+    "demands": [
+        {
+            "id": "D001",           # str  – unique identifier for this demand
+            "src": "R01",           # str  – source rack id (must exist in racks)
+            "dst": "R02",           # str  – destination rack id (must exist in racks, != src)
+            "endpoint_type": "mmf_lc_duplex",  # str – see table below
+            "count": 2,             # int  – number of endpoint pairs (must be > 0)
+        }
+    ],
+}
+```
+
+### Supported `endpoint_type` values
+
+| Value | Description |
+|---|---|
+| `mmf_lc_duplex` | Multi-mode fiber LC duplex (uses LC breakout modules and MPO-12 trunk cables) |
+| `smf_lc_duplex` | Single-mode fiber LC duplex (same physical layout as mmf, different fiber kind) |
+| `mpo12` | MPO-12 pass-through (uses MPO pass-through modules and MPO-12 trunk cables) |
+| `utp_rj45` | UTP / RJ-45 copper (uses UTP modules and UTP patch cables; modules may be shared between peers) |
+
+### Validation rules
+
+- `racks[].id` values must be unique.
+- `demands[].src` and `demands[].dst` must reference existing rack ids and must not be equal.
+- `demands[].count` must be a positive integer.
+- Multiple demands between the same rack pair are merged before allocation.
+
+## Output Structure
+
+`allocate_project` returns an `AllocationResult` dataclass with four lists:
+
+```
+AllocationResult
+├── panels   – list[Panel]   – one Panel per U row used in each rack
+├── modules  – list[Module]  – one Module per physical patch-panel slot used
+├── cables   – list[Cable]   – one Cable per physical cable run
+└── sessions – list[Session] – one Session per individual port connection
+```
+
+### `Panel`
+
+Represents a 1U patch-panel row installed in a rack.
+
+| Field | Type | Description |
+|---|---|---|
+| `rack_id` | `str` | Rack where the panel is installed |
+| `u` | `int` | Rack unit position (1-based) |
+| `slots_per_u` | `int` | Number of module slots in this U (always 4) |
+
+### `Module`
+
+Represents a single module inserted into a panel slot.
+
+| Field | Type | Description |
+|---|---|---|
+| `rack_id` | `str` | Rack where the module is installed |
+| `panel_u` | `int` | Rack unit of the containing panel |
+| `slot` | `int` | Slot index within the panel (1-based) |
+| `module_type` | `str` | Physical module type (e.g. `lc_breakout_2xmpo12_to_12xlcduplex`) |
+| `fiber_kind` | `str \| None` | Fiber type: `"mmf"`, `"smf"`, or `None` for copper/MPO |
+| `polarity_variant` | `str \| None` | Polarity variant (`"A"`, `"AF"`, or `None`) |
+| `peer_rack_id` | `str \| None` | Rack id this module is wired to, or `None` for shared UTP modules |
+| `dedicated` | `bool` | `True` if exclusively used for one rack pair |
+
+### `Cable`
+
+Represents a physical cable between two racks.
+
+| Field | Type | Description |
+|---|---|---|
+| `cable_id` | `str` | Deterministic 32-character hex ID |
+| `cable_type` | `str` | `"mpo12_trunk"` or `"utp_cable"` |
+| `fiber_kind` | `str \| None` | `"mmf"`, `"smf"`, or `None` |
+| `polarity_type` | `str \| None` | `"A"`, `"B"`, or `None` |
+| `src_rack` | `str` | Source rack id |
+| `dst_rack` | `str` | Destination rack id |
+
+### `Session`
+
+Represents a single logical port-to-port connection (one row in the CSV export).
+
+| Field | Type | Description |
+|---|---|---|
+| `session_id` | `str` | Deterministic 32-character hex ID |
+| `media` | `str` | Endpoint type (e.g. `"mmf_lc_duplex"`) |
+| `cable_id` | `str` | ID of the physical cable carrying this session |
+| `adapter_type` | `str` | Module type used at both ends |
+| `label_a` | `str` | Human-readable label for the source port — format: `{rack_id}U{u}S{slot}P{port}` (e.g. `R01U1S1P1`) |
+| `label_b` | `str` | Human-readable label for the destination port — same format as `label_a` |
+| `src_rack` | `str` | Source rack id |
+| `src_face` | `str` | Panel face (`"front"`) |
+| `src_u` | `int` | Source rack unit |
+| `src_slot` | `int` | Source module slot |
+| `src_port` | `int` | Source port number (1-based) |
+| `dst_rack` | `str` | Destination rack id |
+| `dst_face` | `str` | Panel face (`"front"`) |
+| `dst_u` | `int` | Destination rack unit |
+| `dst_slot` | `int` | Destination module slot |
+| `dst_port` | `int` | Destination port number (1-based) |
+| `fiber_a` | `int \| None` | Fiber strand A number in the MPO trunk, or `None` for copper |
+| `fiber_b` | `int \| None` | Fiber strand B number in the MPO trunk, or `None` for copper |
+| `notes` | `str \| None` | Optional free-text notes |
+
+Label format: `{rack_id}U{u}S{slot}P{port}` — for example `R01U1S1P3` means Rack R01, U1, Slot 1, Port 3.
+
+## API Reference
+
+### `allocate_project(project: dict) -> AllocationResult`
+
+Computes a deterministic patch-panel allocation from a project definition.  
+Raises `ValueError` for invalid input (duplicate rack ids, unknown endpoint type, etc.).
+
+### `export_session_table_csv(*, project_id, sessions, revision_id=None) -> str`
+
+Returns a CSV string with one header row followed by one row per session.  
+Columns: `project_id`, `revision_id`, `session_id`, `media`, `cable_id`, `adapter_type`,
+`label_a`, `label_b`, `src_rack`, `src_face`, `src_u`, `src_slot`, `src_port`,
+`dst_rack`, `dst_face`, `dst_u`, `dst_slot`, `dst_port`, `fiber_a`, `fiber_b`, `notes`.  
+Sessions are sorted by `session_id` for stable, reproducible output.
+
+### `export_result_json(*, project_id, result, revision_id=None) -> str`
+
+Returns a JSON string with a top-level object containing:
+- `project_id`, `revision_id`
+- `metrics` — summary counts (total sessions, cables, modules, panels; breakdowns by type)
+- `panels`, `modules`, `cables`, `sessions` — full lists as JSON objects
+- `warnings` — reserved list (currently always empty)
+
+### `render_svgs(result: AllocationResult) -> dict`
+
+Returns a dictionary with three keys:
+- `"topology"` — `str`: a single SVG placeholder for the whole topology view
+- `"rack_panels"` — `dict[str, str]`: one SVG per rack, keyed by rack id
+- `"pair_detail"` — `dict[str, str]`: one SVG per rack-pair, keyed by `"{rack_a}_{rack_b}"`
+
+## Complete Example with Sample Output
+
+```python
+from patchwork import allocate_project, export_session_table_csv, export_result_json, render_svgs
 
 project = {
     "racks": [{"id": "R01"}, {"id": "R02"}],
@@ -84,16 +266,109 @@ project = {
             "src": "R01",
             "dst": "R02",
             "endpoint_type": "mmf_lc_duplex",
-            "count": 24,
+            "count": 2,
         }
     ],
 }
 
 result = allocate_project(project)
+```
 
-csv_output = export_session_table_csv(project_id="proj-1", sessions=result.sessions)
+**`result.panels`**
 
-svgs = render_svgs(result)
+```python
+[Panel(rack_id='R01', u=1, slots_per_u=4),
+ Panel(rack_id='R02', u=1, slots_per_u=4)]
+```
+
+**`result.modules`**
+
+```python
+[Module(rack_id='R01', panel_u=1, slot=1,
+        module_type='lc_breakout_2xmpo12_to_12xlcduplex',
+        fiber_kind='mmf', polarity_variant='AF',
+        peer_rack_id='R02', dedicated=True),
+ Module(rack_id='R02', panel_u=1, slot=1,
+        module_type='lc_breakout_2xmpo12_to_12xlcduplex',
+        fiber_kind='mmf', polarity_variant='AF',
+        peer_rack_id='R01', dedicated=True)]
+```
+
+**`result.cables`**
+
+```python
+[Cable(cable_id='8707e28e...', cable_type='mpo12_trunk',
+       fiber_kind='mmf', polarity_type='A',
+       src_rack='R01', dst_rack='R02'),
+ Cable(cable_id='8f3b41d8...', cable_type='mpo12_trunk',
+       fiber_kind='mmf', polarity_type='A',
+       src_rack='R01', dst_rack='R02')]
+```
+
+**`result.sessions`**
+
+```python
+[Session(session_id='b2d56de0...', media='mmf_lc_duplex',
+         cable_id='8707e28e...', adapter_type='lc_breakout_2xmpo12_to_12xlcduplex',
+         label_a='R01U1S1P1', label_b='R02U1S1P1',
+         src_rack='R01', src_face='front', src_u=1, src_slot=1, src_port=1,
+         dst_rack='R02', dst_face='front', dst_u=1, dst_slot=1, dst_port=1,
+         fiber_a=1, fiber_b=2, notes=None),
+ Session(session_id='1df763d4...', media='mmf_lc_duplex',
+         cable_id='8707e28e...', adapter_type='lc_breakout_2xmpo12_to_12xlcduplex',
+         label_a='R01U1S1P2', label_b='R02U1S1P2',
+         src_rack='R01', src_face='front', src_u=1, src_slot=1, src_port=2,
+         dst_rack='R02', dst_face='front', dst_u=1, dst_slot=1, dst_port=2,
+         fiber_a=3, fiber_b=4, notes=None)]
+```
+
+**CSV export** (`export_session_table_csv(project_id="proj-1", sessions=result.sessions)`)
+
+```
+project_id,revision_id,session_id,media,cable_id,adapter_type,label_a,label_b,src_rack,src_face,src_u,src_slot,src_port,dst_rack,dst_face,dst_u,dst_slot,dst_port,fiber_a,fiber_b,notes
+proj-1,,1df763d4...,mmf_lc_duplex,8707e28e...,lc_breakout_2xmpo12_to_12xlcduplex,R01U1S1P2,R02U1S1P2,R01,front,1,1,2,R02,front,1,1,2,3,4,
+proj-1,,b2d56de0...,mmf_lc_duplex,8707e28e...,lc_breakout_2xmpo12_to_12xlcduplex,R01U1S1P1,R02U1S1P1,R01,front,1,1,1,R02,front,1,1,1,1,2,
+```
+
+**JSON export** (`export_result_json(project_id="proj-1", result=result)`)
+
+```json
+{
+  "project_id": "proj-1",
+  "revision_id": null,
+  "metrics": {
+    "total_sessions": 2,
+    "sessions_by_media": {"mmf_lc_duplex": 2},
+    "total_cables": 2,
+    "cables_by_type": {"mpo12_trunk": 2},
+    "total_modules": 2,
+    "modules_by_type": {"lc_breakout_2xmpo12_to_12xlcduplex": 2},
+    "total_panels": 2
+  },
+  "panels": [
+    {"rack_id": "R01", "u": 1, "slots_per_u": 4},
+    {"rack_id": "R02", "u": 1, "slots_per_u": 4}
+  ],
+  "modules": [ ... ],
+  "cables": [ ... ],
+  "sessions": [ ... ],
+  "warnings": []
+}
+```
+
+**SVG output** (`render_svgs(result)`)
+
+```python
+{
+  "topology": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="topology">...</svg>',
+  "rack_panels": {
+    "R01": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="rack-panels" data-rack="R01">...</svg>',
+    "R02": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="rack-panels" data-rack="R02">...</svg>',
+  },
+  "pair_detail": {
+    "R01_R02": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="pair-detail" data-pair="R01_R02">...</svg>',
+  },
+}
 ```
 
 ## Configuration
@@ -225,6 +500,10 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - [依存関係](#依存関係)
 - [インストール](#インストール)
 - [基本的な使い方](#基本的な使い方)
+- [入力スキーマ](#入力スキーマ)
+- [出力の構造](#出力の構造)
+- [API リファレンス](#api-リファレンス)
+- [完全なサンプルと出力例](#完全なサンプルと出力例)
 - [設定](#設定)
 - [開発](#開発)
 - [プロジェクト構成](#プロジェクト構成)
@@ -282,7 +561,185 @@ pip install -e .
 ### 基本的な使い方
 
 ```python
-from patchwork import allocate_project, export_session_table_csv, render_svgs
+from patchwork import allocate_project, export_session_table_csv, export_result_json, render_svgs
+
+# 1. プロジェクトを定義する（ラックと接続要求）
+project = {
+    "racks": [{"id": "R01"}, {"id": "R02"}],
+    "demands": [
+        {
+            "id": "D001",
+            "src": "R01",
+            "dst": "R02",
+            "endpoint_type": "mmf_lc_duplex",
+            "count": 2,
+        }
+    ],
+}
+
+# 2. 割り当てを実行する
+result = allocate_project(project)
+
+# 3. セッション一覧を CSV として出力する
+csv_output = export_session_table_csv(project_id="proj-1", sessions=result.sessions)
+
+# 4. 全結果を JSON として出力する
+json_output = export_result_json(project_id="proj-1", result=result)
+
+# 5. SVG 可視化を生成する
+svgs = render_svgs(result)
+```
+
+### 入力スキーマ
+
+`allocate_project` は以下の構造を持つ Python の `dict`（JSON からロード可）を受け取ります。
+
+```python
+project = {
+    "racks": [
+        {"id": "R01"},  # 各ラックには一意の文字列 id が必要
+        {"id": "R02"},
+    ],
+    "demands": [
+        {
+            "id": "D001",           # str  – この要求の一意な識別子
+            "src": "R01",           # str  – 送信元ラック id（racks に存在する必要あり）
+            "dst": "R02",           # str  – 宛先ラック id（racks に存在し、src と異なる必要あり）
+            "endpoint_type": "mmf_lc_duplex",  # str – 下表参照
+            "count": 2,             # int  – 割り当てる端点ペア数（1 以上）
+        }
+    ],
+}
+```
+
+#### `endpoint_type` に指定できる値
+
+| 値 | 説明 |
+|---|---|
+| `mmf_lc_duplex` | マルチモードファイバー LC デュプレックス（LC ブレイクアウトモジュールと MPO-12 トランクケーブルを使用） |
+| `smf_lc_duplex` | シングルモードファイバー LC デュプレックス（mmf と同じ物理構成、ファイバー種別が異なる） |
+| `mpo12` | MPO-12 パススルー（MPO パススルーモジュールと MPO-12 トランクケーブルを使用） |
+| `utp_rj45` | UTP / RJ-45 銅線（UTP モジュールと UTP パッチケーブルを使用。モジュールは複数のペアで共有される場合あり） |
+
+#### バリデーションルール
+
+- `racks[].id` は一意である必要があります。
+- `demands[].src` および `demands[].dst` は存在するラック id を参照し、互いに異なる必要があります。
+- `demands[].count` は正の整数である必要があります。
+- 同じラックペア間の複数の要求は、割り当て前に統合されます。
+
+### 出力の構造
+
+`allocate_project` は 4 つのリストを持つ `AllocationResult` データクラスを返します。
+
+```
+AllocationResult
+├── panels   – list[Panel]   – 各ラックで使用された U 行ごとに 1 つの Panel
+├── modules  – list[Module]  – 使用された物理パッチパネルスロットごとに 1 つの Module
+├── cables   – list[Cable]   – 物理ケーブルごとに 1 つの Cable
+└── sessions – list[Session] – 個々のポート間接続ごとに 1 つの Session（CSV の 1 行に対応）
+```
+
+#### `Panel`（パネル）
+
+ラックに取り付けられた 1U パッチパネル行を表します。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `rack_id` | `str` | パネルが取り付けられているラック |
+| `u` | `int` | ラックユニット位置（1 始まり） |
+| `slots_per_u` | `int` | この U 内のモジュールスロット数（常に 4） |
+
+#### `Module`（モジュール）
+
+パネルスロットに挿入された単一モジュールを表します。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `rack_id` | `str` | モジュールが取り付けられているラック |
+| `panel_u` | `int` | 収容パネルのラックユニット |
+| `slot` | `int` | パネル内のスロット番号（1 始まり） |
+| `module_type` | `str` | 物理モジュール種別（例: `lc_breakout_2xmpo12_to_12xlcduplex`） |
+| `fiber_kind` | `str \| None` | ファイバー種別: `"mmf"`、`"smf"`、または銅線/MPO の場合 `None` |
+| `polarity_variant` | `str \| None` | 極性バリアント（`"A"`、`"AF"`、または `None`） |
+| `peer_rack_id` | `str \| None` | このモジュールが接続されているラック id。共有 UTP モジュールの場合は `None` |
+| `dedicated` | `bool` | 特定のラックペア専用の場合 `True` |
+
+#### `Cable`（ケーブル）
+
+2 つのラック間の物理ケーブルを表します。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `cable_id` | `str` | 決定論的な 32 文字の 16 進 ID |
+| `cable_type` | `str` | `"mpo12_trunk"` または `"utp_cable"` |
+| `fiber_kind` | `str \| None` | `"mmf"`、`"smf"`、または `None` |
+| `polarity_type` | `str \| None` | `"A"`、`"B"`、または `None` |
+| `src_rack` | `str` | 送信元ラック id |
+| `dst_rack` | `str` | 宛先ラック id |
+
+#### `Session`（セッション）
+
+個々のポート間論理接続を表します（CSV の 1 行に対応）。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `session_id` | `str` | 決定論的な 32 文字の 16 進 ID |
+| `media` | `str` | 端点種別（例: `"mmf_lc_duplex"`） |
+| `cable_id` | `str` | このセッションを通す物理ケーブルの ID |
+| `adapter_type` | `str` | 両端で使用されるモジュール種別 |
+| `label_a` | `str` | 送信元ポートの人間可読ラベル — 形式: `{rack_id}U{u}S{slot}P{port}`（例: `R01U1S1P1`） |
+| `label_b` | `str` | 宛先ポートの人間可読ラベル — `label_a` と同じ形式 |
+| `src_rack` | `str` | 送信元ラック id |
+| `src_face` | `str` | パネル面（`"front"`） |
+| `src_u` | `int` | 送信元ラックユニット |
+| `src_slot` | `int` | 送信元モジュールスロット |
+| `src_port` | `int` | 送信元ポート番号（1 始まり） |
+| `dst_rack` | `str` | 宛先ラック id |
+| `dst_face` | `str` | パネル面（`"front"`） |
+| `dst_u` | `int` | 宛先ラックユニット |
+| `dst_slot` | `int` | 宛先モジュールスロット |
+| `dst_port` | `int` | 宛先ポート番号（1 始まり） |
+| `fiber_a` | `int \| None` | MPO トランク内のファイバーストランド A 番号。銅線の場合は `None` |
+| `fiber_b` | `int \| None` | MPO トランク内のファイバーストランド B 番号。銅線の場合は `None` |
+| `notes` | `str \| None` | 任意の自由記述メモ |
+
+ラベル形式: `{rack_id}U{u}S{slot}P{port}` — 例えば `R01U1S1P3` は「ラック R01、U1、スロット 1、ポート 3」を意味します。
+
+### API リファレンス
+
+#### `allocate_project(project: dict) -> AllocationResult`
+
+プロジェクト定義から決定論的なパッチパネル割り当てを計算します。  
+無効な入力（重複ラック id、未知の endpoint_type など）の場合は `ValueError` を送出します。
+
+#### `export_session_table_csv(*, project_id, sessions, revision_id=None) -> str`
+
+1 行のヘッダーと、セッションごとに 1 行を含む CSV 文字列を返します。  
+カラム: `project_id`、`revision_id`、`session_id`、`media`、`cable_id`、`adapter_type`、
+`label_a`、`label_b`、`src_rack`、`src_face`、`src_u`、`src_slot`、`src_port`、
+`dst_rack`、`dst_face`、`dst_u`、`dst_slot`、`dst_port`、`fiber_a`、`fiber_b`、`notes`。  
+セッションは `session_id` でソートされ、安定した再現可能な出力を保証します。
+
+#### `export_result_json(*, project_id, result, revision_id=None) -> str`
+
+以下を含むトップレベルオブジェクトの JSON 文字列を返します:
+- `project_id`、`revision_id`
+- `metrics` — サマリー集計（セッション・ケーブル・モジュール・パネルの合計数と種別ごとの内訳）
+- `panels`、`modules`、`cables`、`sessions` — 全リストを JSON オブジェクトで出力
+- `warnings` — 予約済みリスト（現時点では常に空）
+
+#### `render_svgs(result: AllocationResult) -> dict`
+
+3 つのキーを持つ辞書を返します:
+- `"topology"` — `str`: トポロジー全体ビューの SVG プレースホルダー
+- `"rack_panels"` — `dict[str, str]`: ラック id をキーとしたラックごとの SVG
+- `"pair_detail"` — `dict[str, str]`: `"{rack_a}_{rack_b}"` をキーとしたラックペアごとの SVG
+
+### 完全なサンプルと出力例
+
+```python
+from patchwork import allocate_project, export_session_table_csv, export_result_json, render_svgs
 
 project = {
     "racks": [{"id": "R01"}, {"id": "R02"}],
@@ -292,16 +749,109 @@ project = {
             "src": "R01",
             "dst": "R02",
             "endpoint_type": "mmf_lc_duplex",
-            "count": 24,
+            "count": 2,
         }
     ],
 }
 
 result = allocate_project(project)
+```
 
-csv_output = export_session_table_csv(project_id="proj-1", sessions=result.sessions)
+**`result.panels`**
 
-svgs = render_svgs(result)
+```python
+[Panel(rack_id='R01', u=1, slots_per_u=4),
+ Panel(rack_id='R02', u=1, slots_per_u=4)]
+```
+
+**`result.modules`**
+
+```python
+[Module(rack_id='R01', panel_u=1, slot=1,
+        module_type='lc_breakout_2xmpo12_to_12xlcduplex',
+        fiber_kind='mmf', polarity_variant='AF',
+        peer_rack_id='R02', dedicated=True),
+ Module(rack_id='R02', panel_u=1, slot=1,
+        module_type='lc_breakout_2xmpo12_to_12xlcduplex',
+        fiber_kind='mmf', polarity_variant='AF',
+        peer_rack_id='R01', dedicated=True)]
+```
+
+**`result.cables`**
+
+```python
+[Cable(cable_id='8707e28e...', cable_type='mpo12_trunk',
+       fiber_kind='mmf', polarity_type='A',
+       src_rack='R01', dst_rack='R02'),
+ Cable(cable_id='8f3b41d8...', cable_type='mpo12_trunk',
+       fiber_kind='mmf', polarity_type='A',
+       src_rack='R01', dst_rack='R02')]
+```
+
+**`result.sessions`**
+
+```python
+[Session(session_id='b2d56de0...', media='mmf_lc_duplex',
+         cable_id='8707e28e...', adapter_type='lc_breakout_2xmpo12_to_12xlcduplex',
+         label_a='R01U1S1P1', label_b='R02U1S1P1',
+         src_rack='R01', src_face='front', src_u=1, src_slot=1, src_port=1,
+         dst_rack='R02', dst_face='front', dst_u=1, dst_slot=1, dst_port=1,
+         fiber_a=1, fiber_b=2, notes=None),
+ Session(session_id='1df763d4...', media='mmf_lc_duplex',
+         cable_id='8707e28e...', adapter_type='lc_breakout_2xmpo12_to_12xlcduplex',
+         label_a='R01U1S1P2', label_b='R02U1S1P2',
+         src_rack='R01', src_face='front', src_u=1, src_slot=1, src_port=2,
+         dst_rack='R02', dst_face='front', dst_u=1, dst_slot=1, dst_port=2,
+         fiber_a=3, fiber_b=4, notes=None)]
+```
+
+**CSV 出力** (`export_session_table_csv(project_id="proj-1", sessions=result.sessions)`)
+
+```
+project_id,revision_id,session_id,media,cable_id,adapter_type,label_a,label_b,src_rack,src_face,src_u,src_slot,src_port,dst_rack,dst_face,dst_u,dst_slot,dst_port,fiber_a,fiber_b,notes
+proj-1,,1df763d4...,mmf_lc_duplex,8707e28e...,lc_breakout_2xmpo12_to_12xlcduplex,R01U1S1P2,R02U1S1P2,R01,front,1,1,2,R02,front,1,1,2,3,4,
+proj-1,,b2d56de0...,mmf_lc_duplex,8707e28e...,lc_breakout_2xmpo12_to_12xlcduplex,R01U1S1P1,R02U1S1P1,R01,front,1,1,1,R02,front,1,1,1,1,2,
+```
+
+**JSON 出力** (`export_result_json(project_id="proj-1", result=result)`)
+
+```json
+{
+  "project_id": "proj-1",
+  "revision_id": null,
+  "metrics": {
+    "total_sessions": 2,
+    "sessions_by_media": {"mmf_lc_duplex": 2},
+    "total_cables": 2,
+    "cables_by_type": {"mpo12_trunk": 2},
+    "total_modules": 2,
+    "modules_by_type": {"lc_breakout_2xmpo12_to_12xlcduplex": 2},
+    "total_panels": 2
+  },
+  "panels": [
+    {"rack_id": "R01", "u": 1, "slots_per_u": 4},
+    {"rack_id": "R02", "u": 1, "slots_per_u": 4}
+  ],
+  "modules": [ ... ],
+  "cables": [ ... ],
+  "sessions": [ ... ],
+  "warnings": []
+}
+```
+
+**SVG 出力** (`render_svgs(result)`)
+
+```python
+{
+  "topology": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="topology">...</svg>',
+  "rack_panels": {
+    "R01": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="rack-panels" data-rack="R01">...</svg>',
+    "R02": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="rack-panels" data-rack="R02">...</svg>',
+  },
+  "pair_detail": {
+    "R01_R02": '<svg xmlns="http://www.w3.org/2000/svg" data-kind="pair-detail" data-pair="R01_R02">...</svg>',
+  },
+}
 ```
 
 ### 設定
