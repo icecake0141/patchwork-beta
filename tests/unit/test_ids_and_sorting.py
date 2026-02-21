@@ -50,6 +50,34 @@ class TestInputValidation(unittest.TestCase):
             result = allocate_project(self._base_project(endpoint_type=ep_type))
             self.assertEqual(len(result.sessions), 1)
 
+    def test_duplicate_rack_ids_raises(self) -> None:
+        project = {
+            "racks": [{"id": "R01"}, {"id": "R01"}],
+            "demands": [],
+        }
+        with self.assertRaises(ValueError):
+            allocate_project(project)
+
+    def test_src_equals_dst_raises(self) -> None:
+        project = {
+            "racks": [{"id": "R01"}, {"id": "R02"}],
+            "demands": [
+                {"id": "D01", "src": "R01", "dst": "R01", "endpoint_type": "mpo12", "count": 1}
+            ],
+        }
+        with self.assertRaises(ValueError):
+            allocate_project(project)
+
+    def test_demand_references_unknown_rack_raises(self) -> None:
+        project = {
+            "racks": [{"id": "R01"}, {"id": "R02"}],
+            "demands": [
+                {"id": "D01", "src": "R01", "dst": "R99", "endpoint_type": "mpo12", "count": 1}
+            ],
+        }
+        with self.assertRaises(ValueError):
+            allocate_project(project)
+
 
 if __name__ == "__main__":
     unittest.main()

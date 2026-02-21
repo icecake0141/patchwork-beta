@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.  # noqa: E501
 
+import json
 import unittest
 
 from patchwork import (
@@ -8,6 +9,7 @@ from patchwork import (
     MPO_PASS_THROUGH_MODULE,
     UTP_MODULE,
     allocate_project,
+    export_result_json,
     export_session_table_csv,
     render_svgs,
 )
@@ -89,6 +91,34 @@ class TestAllocationCore(unittest.TestCase):
         for pair_svg in pair_detail.values():
             self.assertIn("<svg", pair_svg)
             self.assertIn('data-kind="pair-detail"', pair_svg)
+
+    def test_result_json_export_structure(self) -> None:
+        result = allocate_project(self.project)
+        json_output = export_result_json(project_id="proj-1", result=result)
+        data = json.loads(json_output)
+
+        self.assertEqual(data["project_id"], "proj-1")
+        self.assertIsNone(data["revision_id"])
+        self.assertIn("metrics", data)
+        self.assertEqual(data["metrics"]["total_sessions"], len(result.sessions))
+        self.assertEqual(data["metrics"]["total_cables"], len(result.cables))
+        self.assertEqual(data["metrics"]["total_modules"], len(result.modules))
+        self.assertEqual(data["metrics"]["total_panels"], len(result.panels))
+        self.assertIn("sessions_by_media", data["metrics"])
+        self.assertIn("cables_by_type", data["metrics"])
+        self.assertIn("modules_by_type", data["metrics"])
+
+        self.assertEqual(len(data["panels"]), len(result.panels))
+        self.assertEqual(len(data["modules"]), len(result.modules))
+        self.assertEqual(len(data["cables"]), len(result.cables))
+        self.assertEqual(len(data["sessions"]), len(result.sessions))
+        self.assertIsInstance(data["warnings"], list)
+
+    def test_result_json_export_revision_id(self) -> None:
+        result = allocate_project(self.project)
+        json_output = export_result_json(project_id="proj-2", result=result, revision_id="rev-abc")
+        data = json.loads(json_output)
+        self.assertEqual(data["revision_id"], "rev-abc")
 
 
 if __name__ == "__main__":
