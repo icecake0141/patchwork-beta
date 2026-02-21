@@ -628,21 +628,21 @@ def _render_topology_svg(result: AllocationResult) -> str:
         pair_summary.setdefault(pair, {})
         pair_summary[pair][session.media] = pair_summary[pair].get(session.media, 0) + 1
 
-    RACK_W, RACK_H = 90, 36
-    H_GAP, V_GAP = 50, 80
-    MARGIN = 30
-    TITLE_H = 40
-    COLS = min(len(racks), 6)
-    total_rows = math.ceil(len(racks) / COLS)
-    svg_w = MARGIN * 2 + COLS * RACK_W + max(COLS - 1, 0) * H_GAP
-    svg_h = TITLE_H + MARGIN * 2 + total_rows * RACK_H + max(total_rows - 1, 0) * V_GAP + 20
+    rack_w, rack_h = 90, 36
+    h_gap, v_gap = 50, 80
+    margin = 30
+    title_h = 40
+    cols = min(len(racks), 6)
+    total_rows = math.ceil(len(racks) / cols)
+    svg_w = margin * 2 + cols * rack_w + max(cols - 1, 0) * h_gap
+    svg_h = title_h + margin * 2 + total_rows * rack_h + max(total_rows - 1, 0) * v_gap + 20
 
     pos: dict[str, tuple[int, int]] = {}
     for idx, rack_id in enumerate(racks):
-        col = idx % COLS
-        row = idx // COLS
-        x = MARGIN + col * (RACK_W + H_GAP)
-        y = TITLE_H + MARGIN + row * (RACK_H + V_GAP)
+        col = idx % cols
+        row = idx // cols
+        x = margin + col * (rack_w + h_gap)
+        y = title_h + margin + row * (rack_h + v_gap)
         pos[rack_id] = (x, y)
 
     parts: list[str] = [
@@ -655,10 +655,10 @@ def _render_topology_svg(result: AllocationResult) -> str:
     ]
 
     for (ra, rb), media_counts in pair_summary.items():
-        x1 = pos[ra][0] + RACK_W // 2
-        y1 = pos[ra][1] + RACK_H // 2
-        x2 = pos[rb][0] + RACK_W // 2
-        y2 = pos[rb][1] + RACK_H // 2
+        x1 = pos[ra][0] + rack_w // 2
+        y1 = pos[ra][1] + rack_h // 2
+        x2 = pos[rb][0] + rack_w // 2
+        y2 = pos[rb][1] + rack_h // 2
         label = " | ".join(
             f"{_media_abbrev(m)}×{c}" for m, c in sorted(media_counts.items())
         )
@@ -676,11 +676,11 @@ def _render_topology_svg(result: AllocationResult) -> str:
         x, y = pos[rack_id]
         safe_id = html.escape(rack_id)
         parts.append(
-            f'<rect x="{x}" y="{y}" width="{RACK_W}" height="{RACK_H}"'
+            f'<rect x="{x}" y="{y}" width="{rack_w}" height="{rack_h}"'
             f' rx="5" fill="#e8f0fe" stroke="#4a90d9" stroke-width="2"/>'
         )
         parts.append(
-            f'<text x="{x + RACK_W // 2}" y="{y + RACK_H // 2 + 5}"'
+            f'<text x="{x + rack_w // 2}" y="{y + rack_h // 2 + 5}"'
             f' text-anchor="middle"'
             f' style="font-weight:bold;">{safe_id}</text>'
         )
@@ -706,13 +706,13 @@ def _render_rack_panels_svg(rack_id: str, result: AllocationResult) -> str:
         (m.panel_u, m.slot): m for m in rack_modules
     }
 
-    SLOT_W, SLOT_H = 130, 34
-    LABEL_W = 38
-    MARGIN = 20
-    TITLE_H = 44
-    LEGEND_H = 28
-    svg_w = MARGIN * 2 + LABEL_W + SLOTS_PER_U_DEFAULT * SLOT_W
-    svg_h = TITLE_H + max_u * SLOT_H + MARGIN * 2 + LEGEND_H
+    slot_w, slot_h = 130, 34
+    label_w = 38
+    margin = 20
+    title_h = 44
+    legend_h = 28
+    svg_w = margin * 2 + label_w + SLOTS_PER_U_DEFAULT * slot_w
+    svg_h = title_h + max_u * slot_h + margin * 2 + legend_h
     safe_rack = html.escape(rack_id)
 
     parts: list[str] = [
@@ -725,49 +725,49 @@ def _render_rack_panels_svg(rack_id: str, result: AllocationResult) -> str:
     ]
 
     for slot in range(1, SLOTS_PER_U_DEFAULT + 1):
-        hx = MARGIN + LABEL_W + (slot - 1) * SLOT_W + SLOT_W // 2
+        hx = margin + label_w + (slot - 1) * slot_w + slot_w // 2
         parts.append(
             f'<text x="{hx}" y="42" text-anchor="middle"'
             f' style="font-size:10px;fill:#666;">Slot {slot}</text>'
         )
 
     for u in range(1, max_u + 1):
-        ry = TITLE_H + (u - 1) * SLOT_H + MARGIN
+        ry = title_h + (u - 1) * slot_h + margin
         parts.append(
-            f'<text x="{MARGIN + LABEL_W // 2}" y="{ry + SLOT_H // 2 + 4}"'
+            f'<text x="{margin + label_w // 2}" y="{ry + slot_h // 2 + 4}"'
             f' text-anchor="middle" style="font-size:10px;fill:#666;">U{u}</text>'
         )
         for slot in range(1, SLOTS_PER_U_DEFAULT + 1):
-            sx = MARGIN + LABEL_W + (slot - 1) * SLOT_W
+            sx = margin + label_w + (slot - 1) * slot_w
             module = mod_map.get((u, slot))
             if module:
                 fill = _MODULE_FILL.get(module.module_type, "#f5f5f5")
                 abbrev = _module_abbrev(module.module_type, module.fiber_kind)
                 peer = module.peer_rack_id or "shared"
                 parts.append(
-                    f'<rect x="{sx}" y="{ry}" width="{SLOT_W}" height="{SLOT_H}"'
+                    f'<rect x="{sx}" y="{ry}" width="{slot_w}" height="{slot_h}"'
                     f' fill="{fill}" stroke="#888" stroke-width="1"/>'
                 )
                 parts.append(
-                    f'<text x="{sx + SLOT_W // 2}" y="{ry + SLOT_H // 2 - 4}"'
+                    f'<text x="{sx + slot_w // 2}" y="{ry + slot_h // 2 - 4}"'
                     f' text-anchor="middle"'
                     f' style="font-size:9px;font-weight:bold;">'
                     f"{html.escape(abbrev)}</text>"
                 )
                 parts.append(
-                    f'<text x="{sx + SLOT_W // 2}" y="{ry + SLOT_H // 2 + 9}"'
+                    f'<text x="{sx + slot_w // 2}" y="{ry + slot_h // 2 + 9}"'
                     f' text-anchor="middle" style="font-size:9px;">'
                     f"→{html.escape(peer)}</text>"
                 )
             else:
                 parts.append(
-                    f'<rect x="{sx}" y="{ry}" width="{SLOT_W}" height="{SLOT_H}"'
+                    f'<rect x="{sx}" y="{ry}" width="{slot_w}" height="{slot_h}"'
                     f' fill="#fafafa" stroke="#ccc" stroke-width="1"'
                     f' stroke-dasharray="4 2"/>'
                 )
 
-    ly = TITLE_H + max_u * SLOT_H + MARGIN + 8
-    lx = MARGIN
+    ly = title_h + max_u * slot_h + margin + 8
+    lx = margin
     for mtype, label in [
         (LC_BREAKOUT_MODULE, "LC Breakout"),
         (MPO_PASS_THROUGH_MODULE, "MPO Pass-Through"),
@@ -801,13 +801,13 @@ def _render_pair_detail_svg(rack_a: str, rack_b: str, result: AllocationResult) 
             [f"Pair {rack_a}-{rack_b} (no sessions)"],
         )
 
-    ROW_H = 18
-    TITLE_H = 48
-    PORT_COL_W = 150
-    MID_W = 100
-    MARGIN = 20
-    svg_w = MARGIN * 2 + PORT_COL_W + MID_W + PORT_COL_W
-    svg_h = TITLE_H + len(sessions) * ROW_H + MARGIN * 2
+    row_h = 18
+    title_h = 48
+    port_col_w = 150
+    mid_w = 100
+    margin = 20
+    svg_w = margin * 2 + port_col_w + mid_w + port_col_w
+    svg_h = title_h + len(sessions) * row_h + margin * 2
     safe_a = html.escape(rack_a)
     safe_b = html.escape(rack_b)
 
@@ -819,17 +819,17 @@ def _render_pair_detail_svg(rack_a: str, rack_b: str, result: AllocationResult) 
         f'<text x="{svg_w // 2}" y="22" text-anchor="middle"'
         f' style="font-size:14px;font-weight:bold;">'
         f"Pair Detail: {safe_a} ↔ {safe_b}</text>",
-        f'<text x="{MARGIN + PORT_COL_W // 2}" y="40" text-anchor="middle"'
+        f'<text x="{margin + port_col_w // 2}" y="40" text-anchor="middle"'
         f' style="font-size:11px;font-weight:bold;">{safe_a}</text>',
-        f'<text x="{MARGIN + PORT_COL_W + MID_W + PORT_COL_W // 2}" y="40"'
+        f'<text x="{margin + port_col_w + mid_w + port_col_w // 2}" y="40"'
         f' text-anchor="middle"'
         f' style="font-size:11px;font-weight:bold;">{safe_b}</text>',
     ]
 
-    x_src_right = MARGIN + PORT_COL_W
-    x_dst_left = MARGIN + PORT_COL_W + MID_W
+    x_src_right = margin + port_col_w
+    x_dst_left = margin + port_col_w + mid_w
     for i, session in enumerate(sessions):
-        cy = TITLE_H + i * ROW_H + MARGIN + ROW_H // 2
+        cy = title_h + i * row_h + margin + row_h // 2
         color = _MEDIA_COLORS.get(session.media, "#999")
         src_label = f"U{session.src_u}S{session.src_slot}P{session.src_port}"
         dst_label = f"U{session.dst_u}S{session.dst_slot}P{session.dst_port}"
@@ -848,7 +848,7 @@ def _render_pair_detail_svg(rack_a: str, rack_b: str, result: AllocationResult) 
             f' stroke="{color}" stroke-width="1.5"/>'
         )
         parts.append(
-            f'<text x="{x_src_right + MID_W // 2}" y="{cy - 2}" text-anchor="middle"'
+            f'<text x="{x_src_right + mid_w // 2}" y="{cy - 2}" text-anchor="middle"'
             f' style="font-size:8px;fill:#555;">{mid_label}</text>'
         )
         parts.append(
