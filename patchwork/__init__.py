@@ -2,6 +2,7 @@
 # This file was created or modified with the assistance of an AI (Large Language Model). Review for correctness and security.  # noqa: E501
 
 from .allocator import (
+    KNOWN_ENDPOINT_TYPES,
     LC_BREAKOUT_MODULE,
     MPO_PASS_THROUGH_MODULE,
     UTP_MODULE,
@@ -18,6 +19,7 @@ from .allocator import (
 )
 
 __all__ = [
+    "KNOWN_ENDPOINT_TYPES",
     "LC_BREAKOUT_MODULE",
     "MPO_PASS_THROUGH_MODULE",
     "UTP_MODULE",

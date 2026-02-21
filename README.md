@@ -91,7 +91,7 @@ project = {
 
 result = allocate_project(project)
 
-csv_output = export_session_table_csv("proj-1", result.sessions)
+csv_output = export_session_table_csv(project_id="proj-1", sessions=result.sessions)
 
 svgs = render_svgs(result)
 ```
@@ -105,7 +105,7 @@ The allocator expects a Python dictionary (or JSON) with these keys:
   - `id`: unique demand identifier
   - `src`: source rack id
   - `dst`: destination rack id
-  - `endpoint_type`: one of `mmf_lc_duplex`, `mpo12`, or `utp_rj45`
+  - `endpoint_type`: one of `mmf_lc_duplex`, `smf_lc_duplex`, `mpo12`, or `utp_rj45`
   - `count`: number of endpoints to allocate
 
 No additional configuration files are required.
@@ -299,7 +299,7 @@ project = {
 
 result = allocate_project(project)
 
-csv_output = export_session_table_csv("proj-1", result.sessions)
+csv_output = export_session_table_csv(project_id="proj-1", sessions=result.sessions)
 
 svgs = render_svgs(result)
 ```
@@ -313,7 +313,7 @@ svgs = render_svgs(result)
   - `id`: 要求の識別子
   - `src`: 送信元ラック ID
   - `dst`: 宛先ラック ID
-  - `endpoint_type`: `mmf_lc_duplex`、`mpo12`、`utp_rj45` のいずれか
+  - `endpoint_type`: `mmf_lc_duplex`、`smf_lc_duplex`、`mpo12`、`utp_rj45` のいずれか
   - `count`: 割り当てる端点数
 
 追加の設定ファイルは不要です。
