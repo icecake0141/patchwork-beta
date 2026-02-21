@@ -184,6 +184,45 @@ class TestSpecAcceptance(unittest.TestCase):
             [(1, 1), (1, 2), (1, 3), (1, 4)],
         )
 
+    def test_utp_tail_module_exact_fill(self) -> None:
+        """Covers the open_module reset when fill brings used count to exactly 6 (line 382)."""
+        project = {
+            "racks": [{"id": "R01"}, {"id": "R02"}, {"id": "R03"}],
+            "demands": [
+                {"id": "D007", "src": "R01", "dst": "R02", "endpoint_type": "utp_rj45", "count": 4},
+                {"id": "D008", "src": "R01", "dst": "R03", "endpoint_type": "utp_rj45", "count": 2},
+            ],
+        }
+        result = allocate_project(project)
+        r01_modules = sorted(
+            [
+                module
+                for module in result.modules
+                if module.rack_id == "R01" and module.module_type == UTP_MODULE
+            ],
+            key=lambda module: (module.panel_u, module.slot),
+        )
+        # R01 should share a single module between R02 (ports 1-4) and R03 (ports 5-6)
+        self.assertEqual(len(r01_modules), 1)
+        r02_ports = sorted(
+            session.src_port
+            for session in result.sessions
+            if session.media == "utp_rj45"
+            and session.dst_rack == "R02"
+            and session.src_u == r01_modules[0].panel_u
+            and session.src_slot == r01_modules[0].slot
+        )
+        r03_ports = sorted(
+            session.src_port
+            for session in result.sessions
+            if session.media == "utp_rj45"
+            and session.dst_rack == "R03"
+            and session.src_u == r01_modules[0].panel_u
+            and session.src_slot == r01_modules[0].slot
+        )
+        self.assertEqual(r02_ports, [1, 2, 3, 4])
+        self.assertEqual(r03_ports, [5, 6])
+
 
 if __name__ == "__main__":
     unittest.main()

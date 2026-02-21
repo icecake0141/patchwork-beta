@@ -7,10 +7,11 @@ import csv
 import hashlib
 import html
 import io
+import json
 import math
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 SLOTS_PER_U_DEFAULT = 4
@@ -522,6 +523,42 @@ def export_session_table_csv(
             ]
         )
     return output.getvalue()
+
+
+def export_result_json(
+    *,
+    project_id: str,
+    result: AllocationResult,
+    revision_id: str | None = None,
+) -> str:
+    sessions_by_media: dict[str, int] = {}
+    for session in result.sessions:
+        sessions_by_media[session.media] = sessions_by_media.get(session.media, 0) + 1
+    cables_by_type: dict[str, int] = {}
+    for cable in result.cables:
+        cables_by_type[cable.cable_type] = cables_by_type.get(cable.cable_type, 0) + 1
+    modules_by_type: dict[str, int] = {}
+    for module in result.modules:
+        modules_by_type[module.module_type] = modules_by_type.get(module.module_type, 0) + 1
+    payload: dict[str, Any] = {
+        "project_id": project_id,
+        "revision_id": revision_id,
+        "metrics": {
+            "total_sessions": len(result.sessions),
+            "sessions_by_media": sessions_by_media,
+            "total_cables": len(result.cables),
+            "cables_by_type": cables_by_type,
+            "total_modules": len(result.modules),
+            "modules_by_type": modules_by_type,
+            "total_panels": len(result.panels),
+        },
+        "panels": [asdict(panel) for panel in result.panels],
+        "modules": [asdict(module) for module in result.modules],
+        "cables": [asdict(cable) for cable in result.cables],
+        "sessions": [asdict(session) for session in result.sessions],
+        "warnings": [],
+    }
+    return json.dumps(payload, indent=2)
 
 
 def render_svgs(result: AllocationResult) -> dict[str, str | dict[str, str]]:
