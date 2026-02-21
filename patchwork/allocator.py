@@ -20,6 +20,8 @@ LC_BREAKOUT_MODULE = "lc_breakout_2xmpo12_to_12xlcduplex"
 UTP_MODULE = "utp_6xrj45"
 MPO_PASS_THROUGH_MODULE = "mpo12_pass_through_12port"
 
+KNOWN_ENDPOINT_TYPES = frozenset({"mmf_lc_duplex", "smf_lc_duplex", "mpo12", "utp_rj45"})
+
 
 @dataclass(frozen=True)
 class Panel:
@@ -120,7 +122,13 @@ def allocate_project(project: dict[str, Any]) -> AllocationResult:
         if src not in rack_set or dst not in rack_set:
             raise ValueError("demand racks must exist")
         count = int(demand["count"])
+        if count <= 0:
+            raise ValueError("demand count must be a positive integer")
         media = demand["endpoint_type"]
+        if media not in KNOWN_ENDPOINT_TYPES:
+            raise ValueError(
+                f"unknown endpoint_type {media!r}; must be one of {sorted(KNOWN_ENDPOINT_TYPES)}"
+            )
         pair = tuple(sorted((src, dst), key=natural_sort_key))
         pair_demands.setdefault(pair, {})
         pair_demands[pair][media] = pair_demands[pair].get(media, 0) + count
