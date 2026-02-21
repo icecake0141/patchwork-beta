@@ -660,13 +660,10 @@ def _render_topology_svg(result: AllocationResult) -> str:
         y1 = pos[ra][1] + rack_h // 2
         x2 = pos[rb][0] + rack_w // 2
         y2 = pos[rb][1] + rack_h // 2
-        label = " | ".join(
-            f"{_media_abbrev(m)}×{c}" for m, c in sorted(media_counts.items())
-        )
+        label = " | ".join(f"{_media_abbrev(m)}×{c}" for m, c in sorted(media_counts.items()))
         mx, my = (x1 + x2) // 2, (y1 + y2) // 2 - 6
         parts.append(
-            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"'
-            f' stroke="#aaa" stroke-width="2"/>'
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#aaa" stroke-width="2"/>'
         )
         parts.append(
             f'<text x="{mx}" y="{my}" text-anchor="middle"'
@@ -703,9 +700,7 @@ def _render_rack_panels_svg(rack_id: str, result: AllocationResult) -> str:
             [f"Rack {rack_id} (empty)"],
         )
 
-    mod_map: dict[tuple[int, int], Module] = {
-        (m.panel_u, m.slot): m for m in rack_modules
-    }
+    mod_map: dict[tuple[int, int], Module] = {(m.panel_u, m.slot): m for m in rack_modules}
 
     slot_w, slot_h = 130, 34
     label_w = 38
@@ -780,8 +775,7 @@ def _render_rack_panels_svg(rack_id: str, result: AllocationResult) -> str:
             f' fill="{fill}" stroke="#888" stroke-width="1"/>'
         )
         parts.append(
-            f'<text x="{lx + 16}" y="{ly + 10}"'
-            f' style="font-size:10px;">{html.escape(label)}</text>'
+            f'<text x="{lx + 16}" y="{ly + 10}" style="font-size:10px;">{html.escape(label)}</text>'
         )
         lx += 145
 
@@ -859,7 +853,6 @@ def _render_pair_detail_svg(rack_a: str, rack_b: str, result: AllocationResult) 
 
     parts.append("</svg>")
     return "".join(parts)
-
 
 
 def _render_svg_root(title: str, attributes: dict[str, str], text_lines: list[str]) -> str:
