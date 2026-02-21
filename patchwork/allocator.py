@@ -624,7 +624,8 @@ def _render_topology_svg(result: AllocationResult) -> str:
 
     pair_summary: dict[tuple[str, str], dict[str, int]] = {}
     for session in result.sessions:
-        pair = tuple(sorted((session.src_rack, session.dst_rack), key=natural_sort_key))
+        a, b = sorted((session.src_rack, session.dst_rack), key=natural_sort_key)
+        pair: tuple[str, str] = (a, b)
         pair_summary.setdefault(pair, {})
         pair_summary[pair][session.media] = pair_summary[pair].get(session.media, 0) + 1
 
