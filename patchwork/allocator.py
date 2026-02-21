@@ -530,6 +530,7 @@ def export_result_json(
     project_id: str,
     result: AllocationResult,
     revision_id: str | None = None,
+    input_hash: str | None = None,
 ) -> str:
     sessions_by_media: dict[str, int] = {}
     for session in result.sessions:
@@ -543,6 +544,7 @@ def export_result_json(
     payload: dict[str, Any] = {
         "project_id": project_id,
         "revision_id": revision_id,
+        "input_hash": input_hash,
         "metrics": {
             "total_sessions": len(result.sessions),
             "sessions_by_media": sessions_by_media,
@@ -562,30 +564,295 @@ def export_result_json(
 
 
 def render_svgs(result: AllocationResult) -> dict[str, str | dict[str, str]]:
-    topology = _render_svg_root("topology", {"data-kind": "topology"}, ["Topology"])
-    rack_svgs = {}
+    topology = _render_topology_svg(result)
+    rack_svgs: dict[str, str] = {}
     racks = {panel.rack_id for panel in result.panels}
     for rack_id in sorted(racks, key=natural_sort_key):
-        rack_svgs[rack_id] = _render_svg_root(
-            "rack-panels", {"data-kind": "rack-panels", "data-rack": rack_id}, [f"Rack {rack_id}"]
-        )
-    pair_svgs = {}
+        rack_svgs[rack_id] = _render_rack_panels_svg(rack_id, result)
+    pair_svgs: dict[str, str] = {}
     pairs = sorted(
         {(session.src_rack, session.dst_rack) for session in result.sessions},
         key=lambda pair: (natural_sort_key(pair[0]), natural_sort_key(pair[1])),
     )
     for rack_a, rack_b in pairs:
         key = f"{rack_a}_{rack_b}"
-        pair_svgs[key] = _render_svg_root(
-            "pair-detail",
-            {"data-kind": "pair-detail", "data-pair": key},
-            [f"Pair {rack_a}-{rack_b}"],
-        )
+        pair_svgs[key] = _render_pair_detail_svg(rack_a, rack_b, result)
     return {
         "topology": topology,
         "rack_panels": rack_svgs,
         "pair_detail": pair_svgs,
     }
+
+
+_MEDIA_COLORS: dict[str, str] = {
+    "mmf_lc_duplex": "#4a90d9",
+    "smf_lc_duplex": "#9b59b6",
+    "mpo12": "#7b68ee",
+    "utp_rj45": "#5cb85c",
+}
+
+_MODULE_FILL: dict[str, str] = {
+    LC_BREAKOUT_MODULE: "#d0e8ff",
+    MPO_PASS_THROUGH_MODULE: "#e0d8ff",
+    UTP_MODULE: "#d8f0d8",
+}
+
+
+def _media_abbrev(media: str) -> str:
+    return (
+        media.replace("mmf_lc_duplex", "MMF-LC")
+        .replace("smf_lc_duplex", "SMF-LC")
+        .replace("mpo12", "MPO12")
+        .replace("utp_rj45", "UTP")
+    )
+
+
+def _module_abbrev(module_type: str, fiber_kind: str | None) -> str:
+    if module_type == LC_BREAKOUT_MODULE:
+        return f"LC-{(fiber_kind or '').upper()}"
+    if module_type == MPO_PASS_THROUGH_MODULE:
+        return "MPO-PT"
+    if module_type == UTP_MODULE:
+        return "UTP"
+    return module_type[:8]
+
+
+def _render_topology_svg(result: AllocationResult) -> str:
+    racks = sorted({panel.rack_id for panel in result.panels}, key=natural_sort_key)
+    if not racks:
+        return _render_svg_root("topology", {"data-kind": "topology"}, ["Topology (empty)"])
+
+    pair_summary: dict[tuple[str, str], dict[str, int]] = {}
+    for session in result.sessions:
+        a, b = sorted((session.src_rack, session.dst_rack), key=natural_sort_key)
+        pair: tuple[str, str] = (a, b)
+        pair_summary.setdefault(pair, {})
+        pair_summary[pair][session.media] = pair_summary[pair].get(session.media, 0) + 1
+
+    rack_w, rack_h = 90, 36
+    h_gap, v_gap = 50, 80
+    margin = 30
+    title_h = 40
+    cols = min(len(racks), 6)
+    total_rows = math.ceil(len(racks) / cols)
+    svg_w = margin * 2 + cols * rack_w + max(cols - 1, 0) * h_gap
+    svg_h = title_h + margin * 2 + total_rows * rack_h + max(total_rows - 1, 0) * v_gap + 20
+
+    pos: dict[str, tuple[int, int]] = {}
+    for idx, rack_id in enumerate(racks):
+        col = idx % cols
+        row = idx // cols
+        x = margin + col * (rack_w + h_gap)
+        y = title_h + margin + row * (rack_h + v_gap)
+        pos[rack_id] = (x, y)
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" data-kind="topology"'
+        f' width="{svg_w}" height="{svg_h}"'
+        f' style="font-family:monospace;font-size:12px;background:#fff;">',
+        "<title>Topology</title>",
+        f'<text x="{svg_w // 2}" y="26" text-anchor="middle"'
+        f' style="font-size:15px;font-weight:bold;">Topology</text>',
+    ]
+
+    for (ra, rb), media_counts in pair_summary.items():
+        x1 = pos[ra][0] + rack_w // 2
+        y1 = pos[ra][1] + rack_h // 2
+        x2 = pos[rb][0] + rack_w // 2
+        y2 = pos[rb][1] + rack_h // 2
+        label = " | ".join(f"{_media_abbrev(m)}×{c}" for m, c in sorted(media_counts.items()))
+        mx, my = (x1 + x2) // 2, (y1 + y2) // 2 - 6
+        parts.append(
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#aaa" stroke-width="2"/>'
+        )
+        parts.append(
+            f'<text x="{mx}" y="{my}" text-anchor="middle"'
+            f' style="font-size:10px;fill:#444;">{html.escape(label)}</text>'
+        )
+
+    for rack_id in racks:
+        x, y = pos[rack_id]
+        safe_id = html.escape(rack_id)
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{rack_w}" height="{rack_h}"'
+            f' rx="5" fill="#e8f0fe" stroke="#4a90d9" stroke-width="2"/>'
+        )
+        parts.append(
+            f'<text x="{x + rack_w // 2}" y="{y + rack_h // 2 + 5}"'
+            f' text-anchor="middle"'
+            f' style="font-weight:bold;">{safe_id}</text>'
+        )
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _render_rack_panels_svg(rack_id: str, result: AllocationResult) -> str:
+    rack_modules = sorted(
+        [m for m in result.modules if m.rack_id == rack_id],
+        key=lambda m: (m.panel_u, m.slot),
+    )
+    max_u = max((m.panel_u for m in rack_modules), default=0)
+    if max_u == 0:
+        return _render_svg_root(
+            "rack-panels",
+            {"data-kind": "rack-panels", "data-rack": rack_id},
+            [f"Rack {rack_id} (empty)"],
+        )
+
+    mod_map: dict[tuple[int, int], Module] = {(m.panel_u, m.slot): m for m in rack_modules}
+
+    slot_w, slot_h = 130, 34
+    label_w = 38
+    margin = 20
+    title_h = 44
+    legend_h = 28
+    svg_w = margin * 2 + label_w + SLOTS_PER_U_DEFAULT * slot_w
+    svg_h = title_h + max_u * slot_h + margin * 2 + legend_h
+    safe_rack = html.escape(rack_id)
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" data-kind="rack-panels"'
+        f' data-rack="{safe_rack}" width="{svg_w}" height="{svg_h}"'
+        f' style="font-family:monospace;font-size:11px;background:#fff;">',
+        f"<title>Rack {safe_rack}</title>",
+        f'<text x="{svg_w // 2}" y="26" text-anchor="middle"'
+        f' style="font-size:14px;font-weight:bold;">Rack {safe_rack} — Panel Layout</text>',
+    ]
+
+    for slot in range(1, SLOTS_PER_U_DEFAULT + 1):
+        hx = margin + label_w + (slot - 1) * slot_w + slot_w // 2
+        parts.append(
+            f'<text x="{hx}" y="42" text-anchor="middle"'
+            f' style="font-size:10px;fill:#666;">Slot {slot}</text>'
+        )
+
+    for u in range(1, max_u + 1):
+        ry = title_h + (u - 1) * slot_h + margin
+        parts.append(
+            f'<text x="{margin + label_w // 2}" y="{ry + slot_h // 2 + 4}"'
+            f' text-anchor="middle" style="font-size:10px;fill:#666;">U{u}</text>'
+        )
+        for slot in range(1, SLOTS_PER_U_DEFAULT + 1):
+            sx = margin + label_w + (slot - 1) * slot_w
+            module = mod_map.get((u, slot))
+            if module:
+                fill = _MODULE_FILL.get(module.module_type, "#f5f5f5")
+                abbrev = _module_abbrev(module.module_type, module.fiber_kind)
+                peer = module.peer_rack_id or "shared"
+                parts.append(
+                    f'<rect x="{sx}" y="{ry}" width="{slot_w}" height="{slot_h}"'
+                    f' fill="{fill}" stroke="#888" stroke-width="1"/>'
+                )
+                parts.append(
+                    f'<text x="{sx + slot_w // 2}" y="{ry + slot_h // 2 - 4}"'
+                    f' text-anchor="middle"'
+                    f' style="font-size:9px;font-weight:bold;">'
+                    f"{html.escape(abbrev)}</text>"
+                )
+                parts.append(
+                    f'<text x="{sx + slot_w // 2}" y="{ry + slot_h // 2 + 9}"'
+                    f' text-anchor="middle" style="font-size:9px;">'
+                    f"→{html.escape(peer)}</text>"
+                )
+            else:
+                parts.append(
+                    f'<rect x="{sx}" y="{ry}" width="{slot_w}" height="{slot_h}"'
+                    f' fill="#fafafa" stroke="#ccc" stroke-width="1"'
+                    f' stroke-dasharray="4 2"/>'
+                )
+
+    ly = title_h + max_u * slot_h + margin + 8
+    lx = margin
+    for mtype, label in [
+        (LC_BREAKOUT_MODULE, "LC Breakout"),
+        (MPO_PASS_THROUGH_MODULE, "MPO Pass-Through"),
+        (UTP_MODULE, "UTP"),
+    ]:
+        fill = _MODULE_FILL.get(mtype, "#f5f5f5")
+        parts.append(
+            f'<rect x="{lx}" y="{ly}" width="12" height="12"'
+            f' fill="{fill}" stroke="#888" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<text x="{lx + 16}" y="{ly + 10}" style="font-size:10px;">{html.escape(label)}</text>'
+        )
+        lx += 145
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _render_pair_detail_svg(rack_a: str, rack_b: str, result: AllocationResult) -> str:
+    sessions = sorted(
+        [s for s in result.sessions if s.src_rack == rack_a and s.dst_rack == rack_b],
+        key=lambda s: (s.src_u, s.src_slot, s.src_port),
+    )
+    safe_key = html.escape(f"{rack_a}_{rack_b}")
+    if not sessions:
+        return _render_svg_root(
+            "pair-detail",
+            {"data-kind": "pair-detail", "data-pair": f"{rack_a}_{rack_b}"},
+            [f"Pair {rack_a}-{rack_b} (no sessions)"],
+        )
+
+    row_h = 18
+    title_h = 48
+    port_col_w = 150
+    mid_w = 100
+    margin = 20
+    svg_w = margin * 2 + port_col_w + mid_w + port_col_w
+    svg_h = title_h + len(sessions) * row_h + margin * 2
+    safe_a = html.escape(rack_a)
+    safe_b = html.escape(rack_b)
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" data-kind="pair-detail"'
+        f' data-pair="{safe_key}" width="{svg_w}" height="{svg_h}"'
+        f' style="font-family:monospace;font-size:11px;background:#fff;">',
+        f"<title>Pair {safe_a}-{safe_b}</title>",
+        f'<text x="{svg_w // 2}" y="22" text-anchor="middle"'
+        f' style="font-size:14px;font-weight:bold;">'
+        f"Pair Detail: {safe_a} ↔ {safe_b}</text>",
+        f'<text x="{margin + port_col_w // 2}" y="40" text-anchor="middle"'
+        f' style="font-size:11px;font-weight:bold;">{safe_a}</text>',
+        f'<text x="{margin + port_col_w + mid_w + port_col_w // 2}" y="40"'
+        f' text-anchor="middle"'
+        f' style="font-size:11px;font-weight:bold;">{safe_b}</text>',
+    ]
+
+    x_src_right = margin + port_col_w
+    x_dst_left = margin + port_col_w + mid_w
+    for i, session in enumerate(sessions):
+        cy = title_h + i * row_h + margin + row_h // 2
+        color = _MEDIA_COLORS.get(session.media, "#999")
+        src_label = f"U{session.src_u}S{session.src_slot}P{session.src_port}"
+        dst_label = f"U{session.dst_u}S{session.dst_slot}P{session.dst_port}"
+        fiber_info = (
+            f" f{session.fiber_a}/{session.fiber_b}"
+            if session.fiber_a is not None and session.fiber_b is not None
+            else ""
+        )
+        mid_label = html.escape(_media_abbrev(session.media) + fiber_info)
+        parts.append(
+            f'<text x="{x_src_right - 4}" y="{cy + 4}" text-anchor="end"'
+            f' style="font-size:10px;">{html.escape(src_label)}</text>'
+        )
+        parts.append(
+            f'<line x1="{x_src_right}" y1="{cy}" x2="{x_dst_left}" y2="{cy}"'
+            f' stroke="{color}" stroke-width="1.5"/>'
+        )
+        parts.append(
+            f'<text x="{x_src_right + mid_w // 2}" y="{cy - 2}" text-anchor="middle"'
+            f' style="font-size:8px;fill:#555;">{mid_label}</text>'
+        )
+        parts.append(
+            f'<text x="{x_dst_left + 4}" y="{cy + 4}" text-anchor="start"'
+            f' style="font-size:10px;">{html.escape(dst_label)}</text>'
+        )
+
+    parts.append("</svg>")
+    return "".join(parts)
 
 
 def _render_svg_root(title: str, attributes: dict[str, str], text_lines: list[str]) -> str:
