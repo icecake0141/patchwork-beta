@@ -7,6 +7,7 @@ Data center rack patch panel allocation and cable management system.
 
 [![CI](https://github.com/icecake0141/patchwork-beta/actions/workflows/ci.yml/badge.svg)](https://github.com/icecake0141/patchwork-beta/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/icecake0141/patchwork-beta/actions/workflows/codeql.yml/badge.svg)](https://github.com/icecake0141/patchwork-beta/actions/workflows/codeql.yml)
+[![Dependabot Updates](https://github.com/icecake0141/patchwork-beta/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/icecake0141/patchwork-beta/actions/workflows/dependabot/dependabot-updates)
 
 ## Table of Contents
 
