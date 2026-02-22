@@ -7,12 +7,18 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+    paths:
+      - 'patchwork/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/codeql.yml'
   schedule:
     # Run at 00:00 UTC every Monday
     - cron: '0 0 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
@@ -23,11 +29,6 @@ jobs:
       contents: read
       security-events: write
 
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['python']
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -35,7 +36,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: python
           queries: security-extended,security-and-quality
 
       - name: Autobuild
@@ -44,4 +45,4 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:python"
